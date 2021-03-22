@@ -1,0 +1,158 @@
+# Face modelling serves as one of the most fundamental problems in modern artificial intelligence and
+computer vision, and can be useful in various applications like face recognition, identification etc.
+However, face images are usually of high-dimensional (e.g., a small 100×100 gray-scaled face image
+has dimension 100 × 100 = 10, 000), therefore, find a suitable representation is utterly important.
+In this problem, we apply the linear model, principal component analysis (PCA), on face images
+to reduce the dimension and obtain eigenface representations.
+
+Dataset: we use the dataset† which contains 177 face images. Each image contains 256 × 256
+pixels and is gray-scaled (i.e., the value for each pixel is stored as unsigned integer between [0, 255],
+typically, 0 is taken to be black and 255 is taken to be white). You need to split the dataset to be
+train/test set, e.g., you could use the first 157 images for training, and the rest 20 faces for testing.
+
+(1) Write the PCA codes to compute K = 30 eigenfaces and visualize the top 10 eigenfaces.
+(2) Use the learned K eigenfaces from (1) to reconstruct testing images, and record the reconstruction error. 
+The reconstruction error can be defined as ||Yˆ −Y ||^2/N, where Yˆ is the reconstructed face using the learned eigenfaces,
+Y is the testing faces and N is the total number of testing data. Please show 5 testing images and their reconstructed ones.
+(3) Try different values of K, e.g., try K = 10, 30, 50, 100, 150..., and draw the curve to indicate the corresponding 
+testing reconstruction errors. The x-axis of the curve can be different K values, and the y-axis can be testing reconstruction error defined in (2).
+
+
+
+import os
+import numpy as np
+import random
+from PIL import Image
+from matplotlib import pyplot as plt
+
+
+# set the fixed random seed
+random.seed(33)
+
+
+def readImages(path):
+    """
+    read images and transform them as numpy.array
+    :param path: file path of image data set
+    :return: an array contains all images
+    """
+    images = []  # a list contains all image pixel values
+    for i in os.listdir(path):
+        image = Image.open(path + '/' + i)
+        image = np.array(image)
+        # clip the image
+        image = image[80:160, 80:160]
+
+        images.append(image.reshape((1, -1))[0])
+
+    images = np.array(images)  # convert to numpy array
+
+    # mean image
+    mean_image = np.mean(images, axis=0)
+
+    # split into training and testing data set
+    indices = list(range(177))
+
+    # use 147 images as training set, the rest is testing set
+    train_indices = random.sample(indices, 147)
+    test_indices = list(set(indices) - set(train_indices))
+
+    train_images = images[train_indices, :]
+    test_images = images[test_indices, :]
+
+    return train_images, test_images, mean_image
+
+
+def pcaTrain(train_images, mean_image, show=True):
+    """
+    execute PCA algorithm
+    :param train_images:
+    :return: eigenvectors and eigenvalues of covariance matrix
+    """
+    # convert uint8 to float
+    train_images = train_images.astype(np.float16)
+    m, n = train_images.shape
+    # subtract the mean image from each training image
+    train_images -= mean_image
+    # covariance matrix
+    cov_mat = np.cov(train_images.astype(np.uint8), rowvar=False)
+
+    eig_vals, eig_vects = np.linalg.eig(np.mat(cov_mat))
+
+    if show:
+        # visualize the top10 eigenfaces
+        eig_val_ind = np.argsort(eig_vals)
+        k_eig_val_ind = eig_val_ind[: : -1]
+
+        # topK eigenfaces
+        M = eig_vects[:, k_eig_val_ind].astype(np.float16)
+
+        # visualize top10 eigenfaces
+        eigenfaces = M[:, :10]
+        _range = np.max(eigenfaces) - np.min(eigenfaces)
+        eigenfaces = (eigenfaces - np.min(eigenfaces)) / _range
+        eigenfaces *= 255
+        eigenfaces = eigenfaces.astype(np.uint8)
+        plt.imshow(eigenfaces, cmap='gray')
+        plt.show()
+
+    return eig_vals, eig_vects
+
+
+def pcaTest(test_images, mean_image, eig_vals, eig_vects, k=30, show=True):
+   
+    
+
+    eig_val_ind = np.argsort(eig_vals)
+    k_eig_val_ind = eig_val_ind[-1: -(k + 1): -1]
+
+    # topK eigenfaces
+    M = eig_vects[:, k_eig_val_ind].astype(np.float16)
+
+    if show:
+        # show 5 testing images
+        image_list = []
+        for i in range(5):
+            test = test_images[i].reshape((80, 80))
+            test = np.clip(test, 0, 255).astype(np.uint8)
+            image_list.append(test)
+        show_image = np.concatenate(image_list, axis=1)
+        plt.imshow(show_image, cmap='gray')
+        plt.show()
+
+    # use the learned K eigenfaces to reconstruct testing image.
+    test_images = test_images.astype(np.float16)
+    temp = test_images - mean_image
+    # test_images = test_images.astype(np.uint8)
+    low_images = temp * M
+    recon_images = (low_images * M.T + mean_image)
+
+    # reconstruction error
+    rms = np.mean(np.square((test_images - recon_images)))
+
+    if show:
+        # show 5 reconstructed images
+        image_list = []
+        for i in range(5):
+            recon = recon_images[i].reshape((80, 80))
+            recon = np.clip(recon, 0, 255).astype(np.uint8)
+            image_list.append(recon)
+        show_image = np.concatenate(image_list, axis=1)
+        plt.imshow(show_image, cmap='gray')
+        plt.show()
+    return rms
+
+if __name__ == "__main__":
+    path = 'C:/559/face_data'
+    train_images, test_images, mean_image = readImages(path)
+    eig_vals, eig_vects = pcaTrain(train_images, mean_image)
+    pcaTest(test_images, mean_image, eig_vals, eig_vects, k=30)
+    # draw the curve with different K against reconstructed error
+    K = [10, 30, 50, 100, 150]
+    RMS = []
+    for k in K:
+        rms = pcaTest(test_images, mean_image, eig_vals, eig_vects, k, show=False)
+        RMS.append(rms)
+        
+    plt.plot(K, RMS)
+    plt.show()
